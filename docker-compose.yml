@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend # Path to backend directory
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/usr/src/app # Sync local changes for development
+    environment:
+      - NODE_ENV=development
+    command: ["npm", "run", "dev"] # For hot-reloading during development
+
+  frontend:
+    build:
+      context: ./frontend # Path to frontend directory
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/usr/src/app # Sync local changes for development
+    environment:
+      - NODE_ENV=development

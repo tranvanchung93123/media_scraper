@@ -1,80 +1,164 @@
-// src/components/MediaList.js
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 
 const MediaList = () => {
   // State variables
-  const [media, setMedia] = useState([]);
-  const [page, setPage] = useState(1);
-  const [type, setType] = useState('');
-  const [searchText, setSearchText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [totalPages, setTotalPages] = useState(1);
+  const [urls, setUrls] = useState(""); // Input for URLs
+  const [media, setMedia] = useState([]); // Media results
+  const [loading, setLoading] = useState(false); // Loading state
+  const [error, setError] = useState(null); // Error message
+  const [type, setType] = useState(""); // Filter by type
+  const [searchText, setSearchText] = useState(""); // Search text
+  const [currentPage, setCurrentPage] = useState(1); // Current page
+  const [totalPages, setTotalPages] = useState(1); // Total pages
+  const pageSize = 8; // Items per page
 
-  // Function to fetch media items based on page, type, and searchText
-  const fetchMedia = async () => {
+  // Handler for text area input change
+  const handleUrlsChange = (e) => {
+    setUrls(e.target.value);
+  };
+
+  // Fetch media data from API
+  const fetchMedia = async (page = 1) => {
     setLoading(true);
     setError(null);
-    // const apiUrl = process.env.REACT_APP_API_URL;
-    console.log('API URL:', process.env.REACT_APP_API_URL);
 
-    const apiUrl = 'http://localhost:4000'; // Temporary hardcoding
-
-    if (!apiUrl) {
-      console.error('REACT_APP_API_URL is not defined in .env file');
-      return;
-    }
     try {
-      console.log('==========================');
+      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:4000";
+
+      if (!apiUrl) {
+        setError("API URL is not configured. Check your environment variables.");
+        setLoading(false);
+        return;
+      }
+
+      // Send GET request with pagination, type, and search parameters
       const response = await axios.get(`${apiUrl}/api/media`, {
-        params: { page, type, search: searchText },
+        params: {
+          page,
+          pageSize,
+          type,
+          search: searchText,
+        },
+        headers: {
+          Authorization: `Basic ${btoa("admin:secret_password")}`, // Replace with your credentials
+        },
       });
-      console.log(response)
-  
-      setMedia(response.data.items);
-      setTotalPages(response.data.totalPages);
+
+      setMedia(response.data.items); // Update media state with the fetched data
+      setTotalPages(response.data.totalPages || 1); // Update total pages
+      setCurrentPage(page); // Update current page
     } catch (err) {
-      setError("Failed to fetch media. Please try again later.");
+      setError(
+        err.response?.data?.message ||
+          "Failed to fetch media. Please try again later."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch media items when page, type, or search text changes
-  useEffect(() => {
-    fetchMedia();
-  }, [page, type, searchText]);
+  // Scrape media from URLs
+  const scrapeMedia = async () => {
+    setLoading(true);
+    setError(null);
 
-  // Handler for changing media type filter
-  const handleTypeChange = (e) => {
-    setType(e.target.value);
-    setPage(1); // Reset to page 1 when filter changes
+    try {
+      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:4000";
+
+      if (!apiUrl) {
+        setError("API URL is not configured. Check your environment variables.");
+        setLoading(false);
+        return;
+      }
+
+      // Parse URLs from the text area
+      const urlArray = urls
+        .split("\n")
+        .map((url) => url.trim())
+        .filter((url) => url);
+
+      if (urlArray.length === 0) {
+        setError("Please provide at least one valid URL.");
+        setLoading(false);
+        return;
+      }
+
+      // Send POST request to scrape URLs
+      const response = await axios.post(
+        `${apiUrl}/api/scrape`,
+        { urls: urlArray },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Basic ${btoa("admin:secret_password")}`, // Replace with your credentials
+          },
+        }
+      );
+
+      setMedia(response.data.data); // Update media state with the scraped data
+      setTotalPages(response.data.totalPages || 1); // Update total pages
+      setCurrentPage(1); // Reset to the first page
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Failed to scrape media. Please try again later."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Handler for search input change
-  const handleSearchChange = (e) => {
-    setSearchText(e.target.value);
-    setPage(1); // Reset to page 1 when search text changes
+  // Trigger fetchMedia when type or searchText changes
+  useEffect(() => {
+    fetchMedia(1);
+  }, [type, searchText]);
+
+  // Pagination Handlers
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      fetchMedia(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      fetchMedia(currentPage + 1);
+    }
   };
 
   return (
     <div>
-      <div className="mb-4 d-flex justify-content-between align-items-center">
-        {/* Search Bar */}
-        <input
-          type="text"
-          className="form-control w-50"
-          placeholder="Search media..."
-          value={searchText}
-          onChange={handleSearchChange}
-        />
-        
-        {/* Filter by Type Dropdown */}
+      {/* Text area for entering URLs */}
+      <div className="mb-4">
+        <label className="form-label">Enter URLs (one per line):</label>
+        <textarea
+          className="form-control"
+          rows="5"
+          value={urls}
+          onChange={handleUrlsChange}
+          placeholder={`https://example.com\nhttps://another.com`}
+        ></textarea>
+      </div>
+
+      {/* Submit Button to Scrape URLs */}
+      <div className="mb-4">
+        <button
+          className="btn btn-primary"
+          onClick={scrapeMedia}
+          disabled={loading}
+        >
+          {loading ? "Scraping..." : "Scrape Media"}
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-4">
+        <label className="form-label">Filter by Type:</label>
         <select
-          className="form-select w-auto"
+          className="form-control"
           value={type}
-          onChange={handleTypeChange}
+          onChange={(e) => setType(e.target.value)}
         >
           <option value="">All</option>
           <option value="image">Image</option>
@@ -82,22 +166,27 @@ const MediaList = () => {
         </select>
       </div>
 
-      {/* Display error message if API call fails */}
+      <div className="mb-4">
+        <label className="form-label">Search:</label>
+        <input
+          type="text"
+          className="form-control"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          placeholder="Search by keyword"
+        />
+      </div>
+
+      {/* Error Message */}
       {error && <div className="alert alert-danger">{error}</div>}
 
       {/* Media Grid */}
       <div className="row g-4">
-        {loading ? (
-          <div className="text-center">
-            <div className="spinner-border" role="status">
-              <span className="visually-hidden">Loading...</span>
-            </div>
-          </div>
-        ) : (
+        {media.length > 0 ? (
           media.map((item, index) => (
             <div key={index} className="col-md-3">
               <div className="card">
-                {item.type === 'image' ? (
+                {item.type === "image" ? (
                   <img src={item.src} className="card-img-top" alt="Media" />
                 ) : (
                   <video src={item.src} className="card-img-top" controls></video>
@@ -110,25 +199,27 @@ const MediaList = () => {
               </div>
             </div>
           ))
+        ) : (
+          <div>No media found.</div>
         )}
       </div>
 
       {/* Pagination Controls */}
-      <div className="d-flex justify-content-between align-items-center mt-4">
+      <div className="d-flex justify-content-between mt-4">
         <button
           className="btn btn-primary"
-          onClick={() => setPage(page - 1)}
-          disabled={page === 1}
+          onClick={handlePreviousPage}
+          disabled={currentPage === 1 || loading}
         >
           Previous
         </button>
         <span>
-          Page {page} of {totalPages}
+          Page {currentPage} of {totalPages}
         </span>
         <button
           className="btn btn-primary"
-          onClick={() => setPage(page + 1)}
-          disabled={page === totalPages}
+          onClick={handleNextPage}
+          disabled={currentPage === totalPages || loading}
         >
           Next
         </button>

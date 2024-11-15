@@ -1,32 +1,41 @@
 // app.js
 const express = require('express');
 const cors = require('cors');
-const authMiddleware = require('./middleware/authMiddleware');
-const logger = require('./middleware/logger');
-const errorHandling = require('./middleware/errorHandling');
-const mediaRoutes = require('./routes/mediaRoutes');
-const sequelize = require('./config/database'); // Import the Sequelize instance
+const logger = require('./middleware/logger'); // Middleware for logging
+const authMiddleware = require('./middleware/authMiddleware'); // Middleware for authentication
+const errorHandling = require('./middleware/errorHandling'); // Middleware for error handling
+const mediaRoutes = require('./routes/mediaRoutes'); // Routes
+const sequelize = require('./config/database'); // Sequelize instance
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use(logger);
-app.use(authMiddleware);
+app.use(logger); // Log requests
+app.use(authMiddleware); // Authenticate requests
 
 // Routes
-app.use('/api/media', mediaRoutes);
+app.use('/api', mediaRoutes);
 
-// Error handling
+// Error Handling Middleware
 app.use(errorHandling);
 
-// Ensure models are synchronized after the database is ready
+// Handle CORS Pre-flight Requests
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  next();
+});
+
+// Synchronize Database
 sequelize
-  .sync()
+  .sync({ alter: true }) // Use `alter` to update schema without dropping data
   .then(() => {
-    console.log('Models synchronized successfully.');
+    console.log('Database and models synchronized successfully.');
   })
   .catch((err) => {
-    console.error('Error initializing database:', err.message);
+    console.error('Error synchronizing the database:', err.message);
     process.exit(1); // Exit the process if database initialization fails
   });
 
