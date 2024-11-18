@@ -64,7 +64,7 @@ const MediaList = () => {
     setError(null);
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:4000";
+      const apiUrl = "http://localhost:4000";
 
       if (!apiUrl) {
         setError("API URL is not configured. Check your environment variables.");

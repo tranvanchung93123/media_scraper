@@ -46,7 +46,6 @@ exports.scrapeMediaController = async (req, res, next) => {
     }
 
     const mediaData = await scrapeMedia(urls);
-    await ImageVideo.create(mediaData[0]);
 
     // Paginate results
     const offset = (page - 1) * pageSize;
