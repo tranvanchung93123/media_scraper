@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-const MediaList = () => {
-  // State variables
+const CSRMediaPage = () => {
   const [urls, setUrls] = useState(""); // Input for URLs
   const [media, setMedia] = useState([]); // Media results
   const [loading, setLoading] = useState(false); // Loading state
@@ -13,29 +12,17 @@ const MediaList = () => {
   const [totalPages, setTotalPages] = useState(1); // Total pages
   const pageSize = 8; // Items per page
 
-  // Handler for text area input change
-  const handleUrlsChange = (e) => {
-    setUrls(e.target.value);
-  };
-
-  // Fetch media data from API
+  // Function to fetch paginated media from `/api/media`
   const fetchMedia = async (page = 1) => {
     setLoading(true);
     setError(null);
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:4000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-      if (!apiUrl) {
-        setError("API URL is not configured. Check your environment variables.");
-        setLoading(false);
-        return;
-      }
-
-      // Send GET request with pagination, type, and search parameters
       const response = await axios.get(`${apiUrl}/api/media`, {
         params: {
-          page,
+          page: parseInt(page, 10),
           pageSize,
           type,
           search: searchText,
@@ -45,10 +32,11 @@ const MediaList = () => {
         },
       });
 
-      setMedia(response.data.items); // Update media state with the fetched data
-      setTotalPages(response.data.totalPages || 1); // Update total pages
-      setCurrentPage(page); // Update current page
+      setMedia(response.data.items || []);
+      setTotalPages(response.data.totalPages || 1);
+      setCurrentPage(page);
     } catch (err) {
+      console.error("Error fetching media:", err.message);
       setError(
         err.response?.data?.message ||
           "Failed to fetch media. Please try again later."
@@ -58,48 +46,62 @@ const MediaList = () => {
     }
   };
 
-  // Scrape media from URLs
+  // Function to scrape new media from `/api/scrape`
   const scrapeMedia = async () => {
     setLoading(true);
     setError(null);
-
+  
     try {
-      const apiUrl = "http://localhost:4000";
-
-      if (!apiUrl) {
-        setError("API URL is not configured. Check your environment variables.");
-        setLoading(false);
-        return;
-      }
-
-      // Parse URLs from the text area
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  
       const urlArray = urls
         .split("\n")
         .map((url) => url.trim())
         .filter((url) => url);
-
+  
       if (urlArray.length === 0) {
         setError("Please provide at least one valid URL.");
         setLoading(false);
         return;
       }
-
-      // Send POST request to scrape URLs
+  
+      // Call the `/api/scrape` endpoint
       const response = await axios.post(
         `${apiUrl}/api/scrape`,
         { urls: urlArray },
         {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Basic ${btoa("admin:secret_password")}`, // Replace with your credentials
+            Authorization: `Basic ${btoa("admin:secret_password")}`,
           },
         }
       );
-
-      setMedia(response.data.data); // Update media state with the scraped data
-      setTotalPages(response.data.totalPages || 1); // Update total pages
-      setCurrentPage(1); // Reset to the first page
+  
+      // Process scraped data
+      const scrapedData = response.data.data || [];
+      if (scrapedData.length === 0) {
+        throw new Error("No media found in the scraped data.");
+      }
+  
+      const newMedia = scrapedData.flatMap((item) => {
+        const images = item.images.map((src) => ({
+          type: "image",
+          src,
+          url: item.url,
+        }));
+        const videos = item.videos.map((src) => ({
+          type: "video",
+          src,
+          url: item.url,
+        }));
+        return [...images, ...videos];
+      });
+  
+      setMedia(newMedia); // Update media with scraped results
+      setTotalPages(1); // Reset pagination
+      setCurrentPage(1);
     } catch (err) {
+      console.error("Error scraping media:", err.message);
       setError(
         err.response?.data?.message ||
           "Failed to scrape media. Please try again later."
@@ -108,13 +110,13 @@ const MediaList = () => {
       setLoading(false);
     }
   };
+  
 
-  // Trigger fetchMedia when type or searchText changes
+  // Fetch media when the component mounts or when filters change
   useEffect(() => {
     fetchMedia(1);
   }, [type, searchText]);
 
-  // Pagination Handlers
   const handlePreviousPage = () => {
     if (currentPage > 1) {
       fetchMedia(currentPage - 1);
@@ -128,21 +130,28 @@ const MediaList = () => {
   };
 
   return (
-    <div>
-      {/* Text area for entering URLs */}
+    <div className="container mt-4">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h1>Client-Side Rendered Media Gallery</h1>
+        <a href="/ssr-media" className="btn btn-link">
+          Switch to SSR
+        </a>
+      </div>
+
+      {/* Textarea for entering URLs */}
       <div className="mb-4">
         <label className="form-label">Enter URLs (one per line):</label>
         <textarea
           className="form-control"
           rows="5"
           value={urls}
-          onChange={handleUrlsChange}
-          placeholder={`https://example.com\nhttps://another.com`}
+          onChange={(e) => setUrls(e.target.value)}
+          placeholder={`https://example.com\nhttps://another-example.com`}
         ></textarea>
       </div>
 
-      {/* Submit Button to Scrape URLs */}
-      <div className="mb-4">
+      {/* Scrape Media Button */}
+      <div className="mb-4 text-center">
         <button
           className="btn btn-primary"
           onClick={scrapeMedia}
@@ -153,32 +162,33 @@ const MediaList = () => {
       </div>
 
       {/* Filters */}
-      <div className="mb-4">
-        <label className="form-label">Filter by Type:</label>
-        <select
-          className="form-control"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-        >
-          <option value="">All</option>
-          <option value="image">Image</option>
-          <option value="video">Video</option>
-        </select>
-      </div>
-
-      <div className="mb-4">
-        <label className="form-label">Search:</label>
-        <input
-          type="text"
-          className="form-control"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
-          placeholder="Search by keyword"
-        />
+      <div className="row mb-4">
+        <div className="col-md-6">
+          <label className="form-label">Filter by Type:</label>
+          <select
+            className="form-select"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+            <option value="">All</option>
+            <option value="image">Image</option>
+            <option value="video">Video</option>
+          </select>
+        </div>
+        <div className="col-md-6">
+          <label className="form-label">Search:</label>
+          <input
+            type="text"
+            className="form-control"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search by keyword"
+          />
+        </div>
       </div>
 
       {/* Error Message */}
-      {error && <div className="alert alert-danger">{error}</div>}
+      {error && <div className="alert alert-danger text-center">{error}</div>}
 
       {/* Media Grid */}
       <div className="row g-4">
@@ -193,14 +203,14 @@ const MediaList = () => {
                 )}
                 <div className="card-body">
                   <p className="card-text text-center">
-                    {item.type.toUpperCase()}
+                    {item.type?.toUpperCase() || "UNKNOWN"}
                   </p>
                 </div>
               </div>
             </div>
           ))
         ) : (
-          <div>No media found.</div>
+          <div className="text-center">No media found.</div>
         )}
       </div>
 
@@ -228,4 +238,4 @@ const MediaList = () => {
   );
 };
 
-export default MediaList;
+export default CSRMediaPage;

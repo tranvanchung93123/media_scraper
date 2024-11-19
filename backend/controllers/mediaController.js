@@ -1,130 +1,115 @@
 const puppeteer = require("puppeteer");
+const { Op } = require("sequelize");
 const ImageVideo = require("../models/ImageVideo");
 
-const scrapeMedia = async (urls) => {
-  const mediaData = [];
-  const browser = await puppeteer.launch();
-
-  for (const url of urls) {
-    try {
-      const page = await browser.newPage();
-      await page.goto(url, { waitUntil: "networkidle2" });
-
-      if (url.includes("youtube.com/watch")) {
-        const videoData = await page.evaluate(() => {
-          const videoId = document.querySelector("meta[itemprop='videoId']")?.content;
-          const title = document.querySelector("meta[name='title']")?.content || "Unknown";
-          const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      
-          if (videoId) {
-            return {
-              type: "video",
-              title,
-              src: `https://www.youtube.com/embed/${videoId}`, // Embed URL
-              thumbnail, // Thumbnail URL
-            };
-          }
-          return null;
-        });
-
-      
-        if (videoData) {
-          mediaData.push(videoData);
-        }
-      } else {
-        // General website scraping
-        const images = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll("img"))
-            .map((img) => img.src)
-            .filter((src) => src);
-        });
-
-        const videos = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll("video source"))
-            .map((video) => video.src)
-            .filter((src) => src);
-        });
-
-        mediaData.push(
-          ...images.map((src) => ({ url, type: "image", src })),
-          ...videos.map((src) => ({ url, type: "video", src }))
-        );
-      }
-
-      await page.close();
-    } catch (error) {
-      console.error(`Failed to scrape ${url}:`, error.message);
-    }
-  }
-
-  await browser.close();
-  return mediaData;
-};
-
-// Scrape media with pagination support
-exports.scrapeMediaController = async (req, res, next) => {
+/**
+ * Get Paginated Media
+ */
+exports.getMediaController = async (req, res) => {
   try {
-    const { urls, page = 1, pageSize = 8 } = req.body;
+    // Parse query parameters
+    const page = parseInt(req.query.page, 10) || 1;
+    const pageSize = parseInt(req.query.pageSize, 10) || 8;
+    const type = req.query.type || ""; // Filter by type (image/video)
+    const search = req.query.search || ""; // Filter by search term
 
-    if (!urls || !Array.isArray(urls)) {
-      return res.status(400).json({ message: "URLs must be an array." });
-    }
-
-    const mediaData = await scrapeMedia(urls);
-
-    // Paginate results
-    const offset = (page - 1) * pageSize;
-    const paginatedData = mediaData.slice(offset, offset + parseInt(pageSize));
-
-    await ImageVideo.bulkCreate(mediaData); // Save all data to the database
-
-    res.json({
-      success: true,
-      data: paginatedData,
-      totalPages: Math.ceil(mediaData.length / pageSize),
-      totalItems: mediaData.length,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Fetch media from database with pagination
-exports.getMediaController = async (req, res, next) => {
-  try {
-    const { page = 1, pageSize, type, search } = req.query;
+    // Calculate offset for pagination
     const offset = (page - 1) * pageSize;
 
+    // Build `where` clause dynamically
     const where = {};
-    if (type) where.type = type;
-
+    if (type) {
+      where.type = type;
+    }
     if (search) {
-      where.src = { [Op.like]: `%${search}%` }; // Sequelize LIKE query for partial matching
+      where.src = { [Op.like]: `%${search}%` }; // Partial matching
     }
 
+    // Query database with pagination and filters
     const { count, rows } = await ImageVideo.findAndCountAll({
       where,
-      limit: parseInt(pageSize, 10),
-      offset: parseInt(offset, 10),
+      limit: pageSize,
+      offset,
     });
 
+    // Respond with paginated results
     res.json({
       items: rows,
       totalPages: Math.ceil(count / pageSize),
-      currentPage: parseInt(page, 10),
+      currentPage: page,
       totalItems: count,
     });
   } catch (error) {
-    if (error.original?.code === "42P01") {
-      // PostgreSQL error for missing table
-      console.error("Table does not exist. Please create it first.");
-      res
-        .status(500)
-        .json({
-          message: "Table does not exist. Please initialize the database.",
+    console.error("Error fetching media:", error.message);
+    res.status(500).json({ message: "An error occurred while fetching media." });
+  }
+};
+
+/**
+ * Scrape Media from URLs using Puppeteer
+ */
+exports.scrapeMediaController = async (req, res) => {
+  const { urls } = req.body;
+
+  // Validate input
+  if (!Array.isArray(urls) || urls.length === 0) {
+    return res.status(400).json({ message: "Please provide a valid array of URLs." });
+  }
+
+  try {
+    const browser = await puppeteer.launch(); // Launch Puppeteer browser
+    const results = [];
+
+    for (const url of urls) {
+      try {
+        console.log(`Scraping URL: ${url}`); // Debug log
+        const page = await browser.newPage();
+        await page.goto(url, { waitUntil: "networkidle2" });
+
+        // Extract images
+        const images = await page.$$eval("img", (imgs) =>
+          imgs.map((img) => img.src)
+        );
+
+        // Extract videos
+        const videos = await page.$$eval("video", (vids) =>
+          vids.map((vid) => vid.src)
+        );
+
+        // Save extracted media to the database
+        const newMedia = [];
+        for (const img of images) {
+          newMedia.push({ type: "image", src: img, url });
+        }
+        for (const vid of videos) {
+          newMedia.push({ type: "video", src: vid, url });
+        }
+
+        if (newMedia.length > 0) {
+          await ImageVideo.bulkCreate(newMedia); // Bulk insert to optimize database writes
+        }
+
+        results.push({
+          url,
+          images,
+          videos,
         });
-    } else {
-      next(error);
+
+        await page.close(); // Close the page
+      } catch (error) {
+        console.error(`Failed to scrape ${url}:`, error.message);
+        results.push({
+          url,
+          error: `Failed to scrape: ${error.message}`,
+        });
+      }
     }
+
+    await browser.close(); // Close the browser
+
+    res.status(200).json({ data: results });
+  } catch (error) {
+    console.error("Error in scrapeMediaController:", error.message);
+    res.status(500).json({ message: "An error occurred while scraping media." });
   }
 };
