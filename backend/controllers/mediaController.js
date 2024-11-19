@@ -1,38 +1,63 @@
-const axios = require("axios");
-const cheerio = require("cheerio");
+const puppeteer = require("puppeteer");
 const ImageVideo = require("../models/ImageVideo");
 
 const scrapeMedia = async (urls) => {
   const mediaData = [];
+  const browser = await puppeteer.launch();
 
   for (const url of urls) {
     try {
-      const { data } = await axios.get(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        },
-      });
-      const $ = cheerio.load(data);
+      const page = await browser.newPage();
+      await page.goto(url, { waitUntil: "networkidle2" });
 
-      $("img").each((_, elem) => {
-        const src = $(elem).attr("src");
-        if (src) {
-          mediaData.push({ url, type: "image", src });
-        }
-      });
+      if (url.includes("youtube.com/watch")) {
+        const videoData = await page.evaluate(() => {
+          const videoId = document.querySelector("meta[itemprop='videoId']")?.content;
+          const title = document.querySelector("meta[name='title']")?.content || "Unknown";
+          const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      
+          if (videoId) {
+            return {
+              type: "video",
+              title,
+              src: `https://www.youtube.com/embed/${videoId}`, // Embed URL
+              thumbnail, // Thumbnail URL
+            };
+          }
+          return null;
+        });
 
-      $("video").each((_, elem) => {
-        const src = $(elem).attr("src");
-        if (src) {
-          mediaData.push({ url, type: "video", src });
+      
+        if (videoData) {
+          mediaData.push(videoData);
         }
-      });
+      } else {
+        // General website scraping
+        const images = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll("img"))
+            .map((img) => img.src)
+            .filter((src) => src);
+        });
+
+        const videos = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll("video source"))
+            .map((video) => video.src)
+            .filter((src) => src);
+        });
+
+        mediaData.push(
+          ...images.map((src) => ({ url, type: "image", src })),
+          ...videos.map((src) => ({ url, type: "video", src }))
+        );
+      }
+
+      await page.close();
     } catch (error) {
       console.error(`Failed to scrape ${url}:`, error.message);
     }
   }
 
+  await browser.close();
   return mediaData;
 };
 

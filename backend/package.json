@@ -10,6 +10,7 @@
     "express": "^4.21.1",
     "pg": "^8.13.1",
     "pg-hstore": "^2.3.4",
+    "puppeteer": "^23.8.0",
     "sequelize": "^6.37.5"
   },
   "devDependencies": {
