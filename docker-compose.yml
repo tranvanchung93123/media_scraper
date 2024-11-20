@@ -2,24 +2,54 @@ version: '3.8'
 
 services:
   backend:
+    container_name: backend-service
     build:
-      context: ./backend # Path to backend directory
+      context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "4000:4000"
-    volumes:
-      - ./backend:/usr/src/app # Sync local changes for development
+      - "4000:4000" # Expose backend port 4000
     environment:
-      - NODE_ENV=development
-    command: ["npm", "run", "dev"] # For hot-reloading during development
+      NODE_ENV: production
+      DB_HOST: db # Service name for the database
+      DB_PORT: 5432
+      DB_USER: media_user
+      DB_PASSWORD: media_password
+      DB_NAME: media_db
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/usr/src/app # Mount backend code for development convenience
 
   frontend:
+    container_name: frontend-service
     build:
-      context: ./frontend # Path to frontend directory
+      context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/usr/src/app # Sync local changes for development
+      - "3000:80" # Expose frontend on port 3000
     environment:
-      - NODE_ENV=development
+      NEXT_PUBLIC_API_URL: http://localhost:4000 # URL for the backend API
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app # Mount frontend code for development convenience
+
+  db:
+    container_name: database-service
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432" # Expose PostgreSQL on port 5432
+    environment:
+      POSTGRES_USER: media_user
+      POSTGRES_PASSWORD: media_password
+      POSTGRES_DB: media_db
+    volumes:
+      - db_data:/var/lib/postgresql/data # Persist database data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U media_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data: # Persistent storage for the database
