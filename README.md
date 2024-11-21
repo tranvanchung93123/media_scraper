@@ -48,7 +48,7 @@ docker-compose up --build
 Once the services are running:
 - **Frontend**:  http://localhost:3000
 - **Backend**:  http://localhost:4000
-- **Database**: Host: ```localhost```, Port: ```5432```, Username: ```media_user```, Password: ```media_password```, Database: ```media_db```
+- **Database**: Host: ```localhost```, Port: ```5432```, Username: ```postgres```, Password: ```media_password```, Database: ```media_db```
 
 
 ### **5. Stop the Services**
