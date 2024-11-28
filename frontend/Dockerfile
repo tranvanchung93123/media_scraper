@@ -1,35 +1,25 @@
-# Step 1: Use an official Node.js runtime as a base image
-FROM node:18-alpine AS build
+# Frontend Dockerfile
 
-# Step 2: Set the working directory
+# Use Node.js base image
+FROM node:18
+
+# Set working directory
 WORKDIR /app
 
-# Step 3: Copy package files
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Step 4: Install dependencies
+# Install dependencies
 RUN npm install
 
-# Step 5: Copy the rest of the application
+# Copy frontend source code
 COPY . .
 
-# Step 6: Build the Next.js application
+# Build the frontend application
 RUN npm run build
 
-# Step 7: Use Node.js runtime for serving the application
-FROM node:18-alpine
-
-# Step 8: Set the working directory
-WORKDIR /app
-
-# Step 9: Copy the built application from the build stage
-COPY --from=build /app ./
-
-# Step 10: Install production dependencies
-RUN npm install --production
-
-# Step 11: Expose the port
+# Expose the frontend port
 EXPOSE 3000
 
-# Step 12: Start the application
+# Start the Next.js server
 CMD ["npm", "start"]
