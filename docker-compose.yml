@@ -7,7 +7,7 @@ services:
     ports:
       - "4000:4000" # Expose backend port
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       DB_NAME: media_db
       DB_USER: postgres
       DB_PASS: password
@@ -34,7 +34,7 @@ services:
     volumes:
       - ./frontend:/app # Sync local frontend code with the container
       - /app/node_modules # Avoid issues with host vs container node_modules
-    command: sh -c "npm install && npm start"
+    command: sh -c "npm install && npm run dev"
 
   db:
     container_name: database-service
