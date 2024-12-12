@@ -56,52 +56,49 @@ exports.scrapeMediaController = async (req, res) => {
     return res.status(400).json({ message: "Please provide a valid array of URLs." });
   }
 
+  let browser;
+
   try {
-    const browser = await puppeteer.launch(); // Launch Puppeteer browser
+    // Launch Puppeteer browser with necessary flags for Docker environments
+    browser = await puppeteer.launch({
+      headless: true, // Headless mode is essential for most server-side environments
+      args: [
+        '--no-sandbox',           // Disables the sandboxing feature which is not allowed for root users
+        '--disable-setuid-sandbox' // Disables setuid sandboxing
+      ],
+    });
+
     const results = [];
 
+    // Loop through each URL and scrape media
     for (const url of urls) {
       try {
         console.log(`Scraping URL: ${url}`); // Debug log
         const page = await browser.newPage();
-        await page.goto(url, { waitUntil: "networkidle2" });
+        await page.goto(url, { waitUntil: 'networkidle2' });
 
-        // Extract images
-        const images = await page.$$eval("img", (imgs) =>
-          imgs.map((img) => img.src)
-        );
-
-        // Extract videos
-        const videos = await page.$$eval("video", (vids) =>
-          vids.map((vid) => vid.src)
-        );
+        // Extract images and videos
+        const images = await page.$$eval('img', imgs => imgs.map(img => img.src));
+        const videos = await page.$$eval('video', vids => vids.map(vid => vid.src));
 
         // Save extracted media to the database
         const newMedia = [];
         for (const img of images) {
-          newMedia.push({ type: "image", src: img, url });
+          newMedia.push({ type: 'image', src: img, url });
         }
         for (const vid of videos) {
-          newMedia.push({ type: "video", src: vid, url });
+          newMedia.push({ type: 'video', src: vid, url });
         }
 
         if (newMedia.length > 0) {
           await ImageVideo.bulkCreate(newMedia); // Bulk insert to optimize database writes
         }
 
-        results.push({
-          url,
-          images,
-          videos,
-        });
-
+        results.push({ url, images, videos });
         await page.close(); // Close the page
       } catch (error) {
-        console.error(`Failed to scrape ${url}:`, error.message);
-        results.push({
-          url,
-          error: `Failed to scrape: ${error.message}`,
-        });
+        console.error(`Failed to scrape ${url}:`, error.stack);
+        results.push({ url, error: `Failed to scrape: ${error.message}` });
       }
     }
 
@@ -109,7 +106,7 @@ exports.scrapeMediaController = async (req, res) => {
 
     res.status(200).json({ data: results });
   } catch (error) {
-    console.error("Error in scrapeMediaController:", error.message);
+    console.error("Error in scrapeMediaController:", error.stack);
     res.status(500).json({ message: "An error occurred while scraping media." });
   }
 };
